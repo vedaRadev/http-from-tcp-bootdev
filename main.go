@@ -3,6 +3,8 @@ package main
 import (
     "fmt"
     "os"
+    "errors"
+    "io"
 )
 
 func main() {
@@ -12,16 +14,15 @@ func main() {
         return
     }
 
+    bytes := make([]byte, 8, 8)
     for {
-        var bytes [8]byte
-        n, err := file.Read(bytes[:])
-        if n == 0 {
-            break
-        }
+        n, err := file.Read(bytes)
         if err != nil {
-            fmt.Printf("Error: %v\n", err)
+            if errors.Is(err, io.EOF) { break }
+            fmt.Printf("error: %s\n", err.Error())
             break
         }
-        fmt.Printf("read: %s\n", bytes)
+
+        fmt.Printf("read: %s\n", bytes[:n])
     }
 }
