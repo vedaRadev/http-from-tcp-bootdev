@@ -2,10 +2,11 @@ package main
 
 import (
     "fmt"
-    "os"
+    "log"
     "errors"
     "io"
     "strings"
+    "net"
 )
 
 func getLines(f io.ReadCloser, linesChan chan<- string) {
@@ -42,13 +43,22 @@ func getLinesChannel(f io.ReadCloser) <-chan string {
 }
 
 func main() {
-    file, err := os.Open("messages.txt")
+    netListener, err := net.Listen("tcp", ":42069")
     if err != nil {
-        fmt.Printf("error opening file: %s\n", err.Error())
-        return
+        log.Fatalf("Failed to listen to port 42069: %s\n", err.Error());
     }
 
-    for line := range(getLinesChannel(file)) {
-        fmt.Printf("read: %s\n", line)
+    for {
+        connection, err := netListener.Accept()
+        if err != nil {
+            fmt.Printf("Failed to accept connection: %s\n", err.Error())
+            continue
+        }
+        fmt.Println("Accepted connection")
+
+        for line := range(getLinesChannel(connection)) {
+            fmt.Printf("read: %s\n", line)
+        }
     }
+
 }
