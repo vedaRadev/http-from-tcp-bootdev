@@ -5,16 +5,18 @@ import (
     "os"
     "errors"
     "io"
+    "strings"
 )
 
 func main() {
     file, err := os.Open("messages.txt")
     if err != nil {
-        fmt.Println("Failed to open file")
+        fmt.Printf("error opening file: %s\n", err.Error())
         return
     }
 
     bytes := make([]byte, 8, 8)
+    var current string
     for {
         n, err := file.Read(bytes)
         if err != nil {
@@ -23,6 +25,15 @@ func main() {
             break
         }
 
-        fmt.Printf("read: %s\n", bytes[:n])
+        parts := strings.Split(string(bytes[:n]), "\n")
+        for i := range(len(parts) - 1) {
+            fmt.Printf("read: %s\n", current + parts[i])
+            current = ""
+        }
+        current += parts[len(parts) - 1]
+    }
+
+    if len(current) > 0 {
+        fmt.Printf("read: %s\n", current)
     }
 }
