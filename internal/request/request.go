@@ -7,8 +7,16 @@ import (
     "regexp"
 )
 
+const bufferSize int = 8
+
+const (
+    REQ_PARSER_INITIALIZED = int(iota)
+    REQ_PARSER_DONE
+)
+
 type Request struct {
     RequestLine RequestLine
+    parserState int
 }
 
 type RequestLine struct {
@@ -17,39 +25,98 @@ type RequestLine struct {
     Method string
 }
 
-var versionRegex, _ = regexp.Compile("^\\d\\.\\d$")
-var methodRegex, _ = regexp.Compile("^[A-Z]+$")
-
-func RequestFromReader(reader io.Reader) (*Request, error) {
-    var requestLine RequestLine
-
-    bytes, err := io.ReadAll(reader)
-    if err != nil { return nil, err }
-
+func (requestLine *RequestLine) tryParse(bytes []byte) (int, error) {
+    var requestLineBytes int
     plaintext := string(bytes)
+    if !strings.Contains(plaintext, "\r\n") { return 0, nil }
+
+    var method, requestTarget, protocol, version string
     parts := strings.Split(plaintext, "\r\n")
     requestLineString := parts[0]
+    requestLineBytes = len(requestLineString) + 2 // +2 for \r\n
     requestLineParts := strings.Split(requestLineString, " ")
-    if len(requestLineParts) != 3 { return nil, errors.New("invalid number of request line parts") }
+    if len(requestLineParts) != 3 { return 0, errors.New("invalid number of request line parts") }
     versionParts := strings.Split(requestLineParts[2], "/")
-    if len(versionParts) != 2 { return nil, errors.New("invalid protocol/version format") }
+    if len(versionParts) != 2 { return 0, errors.New("invalid protocol/version format") }
 
-    method := requestLineParts[0]
-    requestTarget := requestLineParts[1]
-    protocol := versionParts[0]
-    version := versionParts[1]
+    method = requestLineParts[0]
+    requestTarget = requestLineParts[1]
+    protocol = versionParts[0]
+    version = versionParts[1]
 
-    if strings.ToUpper(method) != method { return nil, errors.New("method must be uppercase") }
-    if !methodRegex.MatchString(method) { return nil, errors.New("invalid method formaat") }
-    if !versionRegex.MatchString(version) { return nil, errors.New("invalid version number format") }
+    if strings.ToUpper(method) != method { return 0, errors.New("method must be uppercase") }
+    if !methodRegex.MatchString(method) { return 0, errors.New("invalid method formaat") }
+    if !versionRegex.MatchString(version) { return 0, errors.New("invalid version number format") }
     // NOTE: temporary
-    if protocol != "HTTP" { return nil, errors.New("method must be HTTP") }
+    if protocol != "HTTP" { return 0, errors.New("method must be HTTP") }
     // NOTE: temporary
-    if version != "1.1" { return nil, errors.New("we only support version 1.1 for now") }
+    if version != "1.1" { return 0, errors.New("we only support version 1.1 for now") }
 
     requestLine.Method = method
     requestLine.RequestTarget = requestTarget
     requestLine.HttpVersion = version
+    return requestLineBytes, nil
+}
 
-    return &Request { RequestLine: requestLine }, nil
+var versionRegex, _ = regexp.Compile("^\\d\\.\\d$")
+var methodRegex, _ = regexp.Compile("^[A-Z]+$")
+
+func (r *Request) parse(data []byte) (int, error) {
+    switch (r.parserState) {
+
+    case REQ_PARSER_DONE: 
+        return 0, errors.New("tried to read data in done state")
+
+    case REQ_PARSER_INITIALIZED:
+        bytesParsed, err := r.RequestLine.tryParse(data)
+        if err != nil { return 0, err }
+        if bytesParsed == 0 { return 0, nil }
+        r.parserState = REQ_PARSER_DONE
+        return bytesParsed, nil
+
+    default:
+        return 0, errors.New("unreconized parser state")
+    }
+}
+
+func RequestFromReader(reader io.Reader) (*Request, error) {
+    buf := make([]byte, bufferSize, bufferSize)
+    readToIndex := 0
+    var request Request
+    request.parserState = REQ_PARSER_INITIALIZED
+
+    for request.parserState != REQ_PARSER_DONE {
+        // Grow if full
+        if readToIndex == len(buf) {
+            newLen := len(buf) * 2
+            grown := make([]byte, newLen, newLen)
+            copy(grown, buf)
+            buf = grown
+        }
+
+        bytesRead, err := reader.Read(buf[readToIndex:])
+        if errors.Is(io.EOF, err) {
+            request.parserState = REQ_PARSER_DONE
+            break
+        }
+        readToIndex += bytesRead
+
+        bytesParsed, err := request.parse(buf[:readToIndex])
+        if err != nil { return nil, err }
+        if bytesParsed > 0 {
+            // remove parsed bytes and shrink
+            if bytesParsed == readToIndex {
+                buf = make([]byte, bufferSize, bufferSize)
+                readToIndex = 0
+            } else {
+                leftover := readToIndex - bytesParsed
+                newLen := max(readToIndex - bytesParsed, bufferSize)
+                shrunk := make([]byte, newLen, newLen)
+                copy(shrunk, buf[leftover:])
+                buf = shrunk
+            }
+        }
+    }
+
+    return &request, nil
 }
