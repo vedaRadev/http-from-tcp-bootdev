@@ -7,6 +7,8 @@ import (
     "io"
     "strings"
     "net"
+
+    requestPkg "http-from-tcp/internal/request"
 )
 
 func getLines(f io.ReadCloser, linesChan chan<- string) {
@@ -36,12 +38,6 @@ func getLines(f io.ReadCloser, linesChan chan<- string) {
     close(linesChan)
 }
 
-func getLinesChannel(f io.ReadCloser) <-chan string {
-    linesChan := make(chan string)
-    go getLines(f, linesChan)
-    return linesChan
-}
-
 func main() {
     netListener, err := net.Listen("tcp", ":42069")
     if err != nil {
@@ -56,9 +52,15 @@ func main() {
         }
         fmt.Println("Accepted connection")
 
-        for line := range(getLinesChannel(connection)) {
-            fmt.Printf("read: %s\n", line)
+        request, err := requestPkg.RequestFromReader(connection)
+        if err != nil {
+            fmt.Printf("failed to get request: %v\n", err)
+            continue
         }
+        fmt.Println("Request line:")
+        fmt.Printf("- Method: %v\n", request.RequestLine.Method)
+        fmt.Printf("- Target: %v\n", request.RequestLine.RequestTarget)
+        fmt.Printf("- Version: %v\n", request.RequestLine.HttpVersion)
     }
 
 }
