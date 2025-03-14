@@ -15,7 +15,7 @@ func TestRequestHeaderParse(t *testing.T) {
     n, done, err := headers.Parse(data)
     require.NoError(t, err)
     require.NotNil(t, headers)
-    assert.Equal(t, "localhost:42069", headers["Host"])
+    assert.Equal(t, "localhost:42069", headers.Get("Host"))
     assert.Equal(t, 23, n)
     assert.False(t, done)
 
@@ -46,8 +46,8 @@ func TestRequestHeaderParse(t *testing.T) {
     require.NoError(t, err)
     assert.False(t, done)
     assert.Equal(t, 23, n)
-    assert.Equal(t, "application/json", headers["Accept"])
-    assert.Equal(t, "localhost:42069", headers["Host"])
+    assert.Equal(t, "application/json", headers.Get("Accept"))
+    assert.Equal(t, "localhost:42069", headers.Get("Host"))
 
     // Test: missing value
     headers = NewHeaders()
@@ -57,6 +57,13 @@ func TestRequestHeaderParse(t *testing.T) {
     // Test: missing name
     headers = NewHeaders()
     n, done, err = headers.Parse([]byte(": value\r\n"))
+    require.Error(t, err)
+
+    // Test: illegal field name
+    headers = NewHeaders()
+    n, done, err = headers.Parse([]byte("@ccept: application/json\r\n"))
+    assert.False(t, done)
+    assert.Equal(t, n, 0)
     require.Error(t, err)
 }
 
