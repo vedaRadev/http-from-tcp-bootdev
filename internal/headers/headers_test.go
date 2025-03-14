@@ -63,7 +63,27 @@ func TestRequestHeaderParse(t *testing.T) {
     headers = NewHeaders()
     n, done, err = headers.Parse([]byte("@ccept: application/json\r\n"))
     assert.False(t, done)
-    assert.Equal(t, n, 0)
+    assert.Equal(t, 0, n)
     require.Error(t, err)
+
+    // Test: case insensitive field-name
+    headers = NewHeaders()
+    n, done, err = headers.Parse([]byte("Test: A\r\n"))
+    assert.Equal(t, 9, n)
+    assert.False(t, done)
+    require.NoError(t, err)
+    require.Equal(t, "A", headers.Get("tEsT"))
+
+    // Test: multiple same field-names
+    headers = NewHeaders()
+    n, done, err = headers.Parse([]byte("Test: A\r\n"))
+    assert.Equal(t, 9, n)
+    assert.False(t, done)
+    require.NoError(t, err)
+    n, done, err = headers.Parse([]byte("Test: B\r\n"))
+    assert.Equal(t, 9, n)
+    assert.False(t, done)
+    require.NoError(t, err)
+    assert.Equal(t, "A, B", headers.Get("Test"))
 }
 

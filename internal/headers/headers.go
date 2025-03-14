@@ -3,6 +3,7 @@ package headers
 import (
     "strings"
     "errors"
+    "fmt"
 )
 
 type Headers map[string]string
@@ -39,7 +40,13 @@ func (h Headers) Parse(data []byte) (n int, done bool, err error) {
     if fieldName != headerParts[0] { return 0, false, errors.New("field-name cannot contain whitespace before the separator") }
     if !isValidFieldName(fieldName) { return 0, false, errors.New("field-name contains illegal characters") }
     if fieldValue == "" { return 0, false, errors.New("missing field value") }
-    h[strings.ToLower(fieldName)] = fieldValue
+    loweredFieldName := strings.ToLower(fieldName)
+    existingFieldValue, exists := h[loweredFieldName]
+    if !exists {
+        h[loweredFieldName] = fieldValue
+    } else {
+        h[loweredFieldName] = fmt.Sprintf("%s, %s", existingFieldValue, fieldValue)
+    }
     // include the CRLF we split on in the count
     return len(header) + 2, false, nil
 }
