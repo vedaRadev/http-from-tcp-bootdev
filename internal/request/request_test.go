@@ -31,54 +31,6 @@ func (cr *chunkReader) Read(p []byte) (n int, err error) {
     return n, nil
 }
 
-func TestRequestHeaderParse(t *testing.T) {
-    var requestString string
-    var reader chunkReader
-
-    // Test: valid multiple header
-    requestString = "GET / HTTP/1.1\r\nHost: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n"
-    reader = chunkReader { data: requestString, numBytesPerRead: 3 }
-    r, err := RequestFromReader(&reader)
-    require.NoError(t, err)
-    require.NotNil(t, r)
-    assert.Equal(t, "localhost:42069", r.Headers["host"])
-    assert.Equal(t, "curl/7.81.0", r.Headers["user-agent"])
-    assert.Equal(t, "*/*", r.Headers["accept"])
-
-    // Test: malformed header
-    requestString = "GET / HTTP/1.1\r\nHost localhost:42069\r\n\r\n"
-    reader = chunkReader { data: requestString, numBytesPerRead: 10 }
-    r, err = RequestFromReader(&reader)
-    require.Error(t, err)
-
-    // Test: no headers
-    requestString = "GET / HTTP/1.1\r\n\r\n"
-    reader = chunkReader { data: requestString, numBytesPerRead: 5 }
-    r, err = RequestFromReader(&reader)
-    require.NoError(t, err)
-    assert.Equal(t, 0, len(r.Headers))
-
-    // Test: missing end of headers
-    requestString = "GET / HTTP/1.1\r\nHost localhost:42069\r\n"
-    reader = chunkReader { data: requestString, numBytesPerRead: 8 }
-    r, err = RequestFromReader(&reader)
-    require.Error(t, err)
-
-    // Test: duplicate headers
-    requestString = "GET / HTTP/1.1\r\nTest: A\r\nTest: B\r\n\r\n"
-    reader = chunkReader { data: requestString, numBytesPerRead: 2 }
-    r, err = RequestFromReader(&reader)
-    require.NoError(t, err)
-    assert.Equal(t, "A, B", r.Headers.Get("Test"))
-
-    // Test: case insensitive header
-    requestString = "GET / HTTP/1.1\r\nCase-Sensitive: Nope\r\n\r\n"
-    reader = chunkReader { data: requestString, numBytesPerRead: 12 }
-    r, err = RequestFromReader(&reader)
-    require.NoError(t, err)
-    assert.Equal(t, "Nope", r.Headers.Get("cAsE-SenSITIVE"))
-}
-
 func TestRequestLineParse(t *testing.T) {
     var requestString string
     var reader chunkReader
@@ -129,5 +81,115 @@ func TestRequestLineParse(t *testing.T) {
     requestString = "OPTIONS /prime/rib TCP/1.1\r\nHost: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n"
     reader = chunkReader { data: requestString, numBytesPerRead: 12 }
     _, err = RequestFromReader(&reader)
+    require.Error(t, err)
+}
+
+func TestRequestHeaderParse(t *testing.T) {
+    var requestString string
+    var reader chunkReader
+
+    // Test: valid multiple header
+    requestString = "GET / HTTP/1.1\r\nHost: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n"
+    reader = chunkReader { data: requestString, numBytesPerRead: 3 }
+    r, err := RequestFromReader(&reader)
+    require.NoError(t, err)
+    require.NotNil(t, r)
+    assert.Equal(t, "localhost:42069", r.Headers["host"])
+    assert.Equal(t, "curl/7.81.0", r.Headers["user-agent"])
+    assert.Equal(t, "*/*", r.Headers["accept"])
+
+    // Test: malformed header
+    requestString = "GET / HTTP/1.1\r\nHost localhost:42069\r\n\r\n"
+    reader = chunkReader { data: requestString, numBytesPerRead: 10 }
+    r, err = RequestFromReader(&reader)
+    require.Error(t, err)
+
+    // Test: no headers
+    requestString = "GET / HTTP/1.1\r\n\r\n"
+    reader = chunkReader { data: requestString, numBytesPerRead: 5 }
+    r, err = RequestFromReader(&reader)
+    require.NoError(t, err)
+    assert.Equal(t, 0, len(r.Headers))
+
+    // Test: missing end of headers
+    requestString = "GET / HTTP/1.1\r\nHost localhost:42069\r\n"
+    reader = chunkReader { data: requestString, numBytesPerRead: 8 }
+    r, err = RequestFromReader(&reader)
+    require.Error(t, err)
+
+    // Test: duplicate headers
+    requestString = "GET / HTTP/1.1\r\nTest: A\r\nTest: B\r\n\r\n"
+    reader = chunkReader { data: requestString, numBytesPerRead: 2 }
+    r, err = RequestFromReader(&reader)
+    require.NoError(t, err)
+    assert.Equal(t, "A, B", r.Headers.Get("Test"))
+
+    // Test: case insensitive header
+    requestString = "GET / HTTP/1.1\r\nCase-Sensitive: Nope\r\n\r\n"
+    reader = chunkReader { data: requestString, numBytesPerRead: 12 }
+    r, err = RequestFromReader(&reader)
+    require.NoError(t, err)
+    assert.Equal(t, "Nope", r.Headers.Get("cAsE-SenSITIVE"))
+}
+
+func TestRequestBodyParse(t *testing.T) {
+    var requestString string
+    var reader chunkReader
+
+    // Test: standard body
+    requestString = "POST /submit HTTP/1.1\r\n" +
+        "Host: localhost:42069\r\nContent-Length: 13\r\n" +
+        "\r\n" +
+        "hello world!\n"
+    reader = chunkReader { data: requestString, numBytesPerRead: 3 }
+    r, err := RequestFromReader(&reader)
+    require.NoError(t, err)
+    require.NotNil(t, r)
+    assert.Equal(t, "hello world!\n", string(r.Body))
+
+    // Test: shorter body than content length
+    requestString = "POST /submit HTTP/1.1\r\n" +
+        "Host: localhost:42069\r\nContent-Length: 20\r\n" +
+        "\r\n" +
+        "partial content\n"
+    reader = chunkReader { data: requestString, numBytesPerRead: 1 }
+    r, err = RequestFromReader(&reader)
+    require.Error(t, err)
+
+    // Test: empty body and no content length
+    requestString = "POST /submit HTTP/1.1\r\n" +
+        "Host: localhost:42069\r\n" +
+        "\r\n"
+    reader = chunkReader { data: requestString, numBytesPerRead: 5 }
+    r, err = RequestFromReader(&reader)
+    require.NoError(t, err)
+    assert.Equal(t, 0, len(r.Body))
+
+    // Test: empty body and 0 content length
+    requestString = "POST /submit HTTP/1.1\r\n" +
+        "Host: localhost:42069\r\nContent-Length: 0\r\n" +
+        "\r\n"
+    reader = chunkReader { data: requestString, numBytesPerRead: 4 }
+    r, err = RequestFromReader(&reader)
+    require.NoError(t, err)
+    assert.Equal(t, 0, len(r.Body))
+
+    // Test: body but no content length
+    requestString = "POST /submit HTTP/1.1\r\n" +
+        "Host: localhost:42069\r\n" +
+        "\r\n" +
+        "HI THERE HELLO"
+    reader = chunkReader { data: requestString, numBytesPerRead: 15 }
+    r, err = RequestFromReader(&reader)
+    require.NoError(t, err)
+    assert.Equal(t, 0, len(r.Body))
+
+    // Test: body exceeds content length
+    requestString = "POST /submit HTTP/1.1\r\n" +
+    "Host: localhost:42069\r\nContent-Length: 1\r\n" +
+        "\r\n" +
+        "HI THERE HELLO"
+    reader = chunkReader { data: requestString, numBytesPerRead: 10 }
+    r, err = RequestFromReader(&reader)
     require.Error(t, err)
 }

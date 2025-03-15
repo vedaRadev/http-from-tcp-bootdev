@@ -1,6 +1,7 @@
 package request
 
 import (
+    "strconv"
     "io"
     "strings"
     "errors"
@@ -13,12 +14,15 @@ const bufferSize int = 8
 const (
     REQ_PARSER_REQUESTLINE = int(iota)
     REQ_PARSER_HEADERS
+    REQ_PARSER_BODY
     REQ_PARSER_DONE
 )
 
 type Request struct {
     RequestLine RequestLine
     Headers headers.Headers
+    Body []byte
+    contentLength int
     parserState int
 }
 
@@ -81,12 +85,42 @@ func (r *Request) parse(data []byte) (int, error) {
         bytesParsed, done, err := r.Headers.Parse(data)
         if err != nil { return 0, err }
         if bytesParsed == 0 { return 0, nil }
-        if done { r.parserState = REQ_PARSER_DONE }
+        if done {
+            contentLength, contentLengthConvErr := strconv.Atoi(r.Headers.Get("Content-Length"))
+            if contentLengthConvErr == nil {
+                r.parserState = REQ_PARSER_BODY
+                r.contentLength = contentLength
+            } else {
+                r.parserState = REQ_PARSER_DONE
+            }
+        }
         return bytesParsed, nil
+
+    case REQ_PARSER_BODY:
+        dataLen := len(data)
+        if dataLen < r.contentLength { return 0, nil }
+        if dataLen > r.contentLength { return 0, errors.New("body too long") }
+        r.Body = append(r.Body, data...)
+        r.parserState = REQ_PARSER_DONE
+        return dataLen, nil
 
     default:
         return 0, errors.New("unreconized parser state")
+
     }
+}
+
+func (r *Request) endParseEOF() error {
+    var err error
+
+    // If we're in state REQ_PARSER_BODY then we've already checked that we have a
+    // content-length header and it's been parsed to a valid integer.
+    if r.parserState == REQ_PARSER_BODY && len(r.Body) != r.contentLength {
+        err = errors.New("body too short")
+    }
+
+    r.parserState = REQ_PARSER_DONE
+    return err
 }
 
 func RequestFromReader(reader io.Reader) (*Request, error) {
@@ -107,8 +141,7 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 
         bytesRead, err := reader.Read(buf[readToIndex:])
         if errors.Is(io.EOF, err) {
-            request.parserState = REQ_PARSER_DONE
-            break
+            return &request, request.endParseEOF()
         }
         readToIndex += bytesRead
 
