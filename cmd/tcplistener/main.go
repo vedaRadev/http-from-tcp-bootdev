@@ -65,6 +65,10 @@ func main() {
         for key, value := range(request.Headers) {
             fmt.Printf("- %s: %s\n", key, value)
         }
+        if len(request.Body) > 0 {
+            fmt.Println("Body:")
+            fmt.Printf("%s", string(request.Body))
+        }
     }
 
 }
