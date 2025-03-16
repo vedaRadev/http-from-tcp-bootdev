@@ -130,7 +130,8 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
     request.parserState = REQ_PARSER_REQUESTLINE
     request.Headers = headers.NewHeaders()
 
-    for request.parserState != REQ_PARSER_DONE {
+    Outer:
+    for {
         // Grow if full
         if readToIndex == len(buf) {
             newLen := len(buf) * 2
@@ -145,9 +146,15 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
         }
         readToIndex += bytesRead
 
-        bytesParsed, err := request.parse(buf[:readToIndex])
-        if err != nil { return nil, err }
-        if bytesParsed > 0 {
+        // NOTE(RA): This loop handles the case where multiple items can be parsed from the buffer.
+        // It also protects against a case where parsing can properly complete due to the presence
+        // of multiple parsable items in the buffer when the reader might not receive an EOF (e.g.
+        // network connection).
+        for readToIndex > 0 {
+            bytesParsed, err := request.parse(buf[:readToIndex])
+            if err != nil { return nil, err }
+            if request.parserState == REQ_PARSER_DONE { break Outer }
+            if bytesParsed == 0 { break; }
             // remove parsed bytes and shrink
             if bytesParsed == readToIndex {
                 buf = make([]byte, bufferSize, bufferSize)

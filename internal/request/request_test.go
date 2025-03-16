@@ -135,6 +135,8 @@ func TestRequestHeaderParse(t *testing.T) {
 func TestRequestBodyParse(t *testing.T) {
     var requestString string
     var reader chunkReader
+    var r *Request
+    var err error
 
     // Test: standard body
     requestString = "POST /submit HTTP/1.1\r\n" +
@@ -142,7 +144,7 @@ func TestRequestBodyParse(t *testing.T) {
         "\r\n" +
         "hello world!\n"
     reader = chunkReader { data: requestString, numBytesPerRead: 3 }
-    r, err := RequestFromReader(&reader)
+    r, err = RequestFromReader(&reader)
     require.NoError(t, err)
     require.NotNil(t, r)
     assert.Equal(t, "hello world!\n", string(r.Body))
