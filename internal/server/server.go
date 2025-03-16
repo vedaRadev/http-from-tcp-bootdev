@@ -4,6 +4,8 @@ import (
     "net"
     "fmt"
     "sync/atomic"
+    "http-from-tcp/internal/headers"
+    "http-from-tcp/internal/response"
 )
 
 type Server struct {
@@ -43,7 +45,14 @@ func (s *Server) listen() {
 }
 
 func (s *Server) handle(conn net.Conn) {
-    const response string = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nHello World!"
-    conn.Write([]byte(response))
-    conn.Close()
+    defer conn.Close()
+
+    err := response.WriteStatusLine(conn, response.STATUS_OK)
+    if err != nil { return }
+
+    headers := headers.NewHeaders()
+    headers["Content-Length"] = "0"
+    headers["Connection"] = "close"
+    headers["Content-Type"] = "text/plain"
+    _ = response.WriteHeaders(conn, headers)
 }
