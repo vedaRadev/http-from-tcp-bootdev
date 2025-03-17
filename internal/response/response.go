@@ -35,10 +35,10 @@ func (w *Writer) Write(data []byte) (int, error) {
     return w.internalWriter.Write(data)
 }
 
-func (w *Writer) WriteStatusLine(statusCode StatusCode) error {
+func (w *Writer) WriteStatusLine(statusCode StatusCode) (int, error) {
     var statusLine string
 
-    if w.state != WRITER_STATE_STATUSLINE { return errors.New("out of order write") }
+    if w.state != WRITER_STATE_STATUSLINE { return 0, errors.New("out of order write") }
 
     switch(statusCode) {
     case STATUS_OK:
@@ -48,40 +48,47 @@ func (w *Writer) WriteStatusLine(statusCode StatusCode) error {
     case STATUS_INTERNAL_SERVER_ERROR:
         statusLine = "HTTP/1.1 500 Internal Server Error"
     default:
-        return errors.New("unrecognized status code")
+        return 0, errors.New("unrecognized status code")
     }
 
-    _, err := w.Write([]byte(statusLine))
-    if err != nil { return err }
-    _, err = w.Write([]byte("\r\n"))
-    if err != nil { return err }
+    var totalBytes int
+    n, err := w.Write([]byte(statusLine))
+    totalBytes += n
+    if err != nil { return totalBytes, err }
+    n, err = w.Write([]byte("\r\n"))
+    totalBytes += n
+    if err != nil { return totalBytes, err }
 
     w.state = WRITER_STATE_HEADERS
-    return nil
+    return totalBytes, nil
 }
 
-func (w *Writer) WriteHeaders(headers headers.Headers) error {
-    if w.state != WRITER_STATE_HEADERS { return errors.New("out of order write") }
+func (w *Writer) WriteHeaders(headers headers.Headers) (int, error) {
+    if w.state != WRITER_STATE_HEADERS { return 0, errors.New("out of order write") }
+
+    var totalBytes int
 
     for key, value := range headers {
         header := fmt.Appendf([]byte{}, "%s: %s\r\n", key, value)
-        _, err := w.Write(header)
-        if err != nil { return err }
+        n, err := w.Write(header)
+        totalBytes += n
+        if err != nil { return totalBytes, err }
     }
 
-    _, err := w.Write([]byte("\r\n"))
-    if err != nil { return err }
+    n, err := w.Write([]byte("\r\n"))
+    totalBytes += n
+    if err != nil { return totalBytes, err }
 
     w.state = WRITER_STATE_BODY
-    return nil
+    return totalBytes, nil
 }
 
-func (w *Writer) WriteBody(body []byte) error {
-    if w.state != WRITER_STATE_BODY { return errors.New("out of order write") }
+func (w *Writer) WriteBody(body []byte) (int, error) {
+    if w.state != WRITER_STATE_BODY { return 0, errors.New("out of order write") }
 
-    _, err := w.Write(body)
-    if err != nil { return err }
+    n, err := w.Write(body)
+    if err != nil { return n, err }
 
     w.state = WRITER_STATE_DONE
-    return nil
+    return n, nil
 }
