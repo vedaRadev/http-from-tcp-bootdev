@@ -9,8 +9,6 @@ import (
     "http-from-tcp/internal/headers"
 )
 
-const bufferSize int = 8
-
 const (
     REQ_PARSER_REQUESTLINE = int(iota)
     REQ_PARSER_HEADERS
@@ -110,19 +108,7 @@ func (r *Request) parse(data []byte) (int, error) {
     }
 }
 
-func (r *Request) endParseEOF() error {
-    var err error
-
-    // If we're in state REQ_PARSER_BODY then we've already checked that we have a
-    // content-length header and it's been parsed to a valid integer.
-    if r.parserState == REQ_PARSER_BODY && len(r.Body) != r.contentLength {
-        err = errors.New("body too short")
-    }
-
-    r.parserState = REQ_PARSER_DONE
-    return err
-}
-
+const bufferSize int = 8
 func RequestFromReader(reader io.Reader) (*Request, error) {
     buf := make([]byte, bufferSize, bufferSize)
     readToIndex := 0
@@ -141,8 +127,18 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
         }
 
         bytesRead, err := reader.Read(buf[readToIndex:])
-        if errors.Is(io.EOF, err) {
-            return &request, request.endParseEOF()
+        if err != nil {
+            if errors.Is(io.EOF, err) {
+                // If we're in state REQ_PARSER_BODY then we've already checked that we have a
+                // content-length header and it's been parsed to a valid integer.
+                if request.parserState == REQ_PARSER_BODY && len(request.Body) != request.contentLength {
+                    return nil, errors.New("body too short")
+                }
+
+                break Outer
+            }
+
+            return nil, err
         }
         readToIndex += bytesRead
 
