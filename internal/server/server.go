@@ -53,31 +53,4 @@ func (s *Server) handle(conn net.Conn) {
     if err != nil { return }
     responseWriter := response.NewWriter(conn)
     s.handler(&responseWriter, parsedRequest)
-    /*
-    responseBody := bytes.NewBuffer([]byte{})
-    var handlerError *HandlerError
-    if err != nil {
-        // TODO handle error
-        return
-    } else {
-        handlerError = s.handler(responseBody, parsedRequest)
-    }
-
-    if handlerError == nil {
-        // TODO handle error
-        _ = response.WriteStatusLine(conn, response.STATUS_OK)
-    } else {
-        // TODO handle error
-        _ = response.WriteStatusLine(conn, handlerError.Status)
-        responseBody = bytes.NewBuffer([]byte(handlerError.Message))
-    }
-
-    headers := headers.NewHeaders()
-    headers["Content-Length"] = strconv.Itoa(responseBody.Len())
-    headers["Connection"] = "close"
-    headers["Content-Type"] = "text/plain"
-    _ = response.WriteHeaders(conn, headers)
-
-    _, _ = conn.Write(responseBody.Bytes())
-    */
 }
