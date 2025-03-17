@@ -11,6 +11,7 @@ import (
     "net/http"
     "os"
     "os/signal"
+    "crypto/sha256"
 
     "http-from-tcp/internal/server"
     "http-from-tcp/internal/request"
@@ -32,16 +33,18 @@ const bodyTemplate string = "" +
 "</html>\n"
 
 func handle(w *response.Writer, req *request.Request) {
-    headers := headers.NewHeaders()
-    headers.Add("Connection", "close")
-    headers.Add("Content-Type", "text/html")
+    respHeaders := headers.NewHeaders()
+    respHeaders.Add("Connection", "close")
+    respHeaders.Add("Content-Type", "text/html")
 
     requestTarget := req.RequestLine.RequestTarget
     if strings.HasPrefix(requestTarget, "/httpbin") {
         httpbinPath := strings.TrimPrefix(requestTarget, "/httpbin")
-        headers.Add("Transfer-Encoding", "chunked")
+        respHeaders.Add("Transfer-Encoding", "chunked")
+        respHeaders.Add("Trailers", "X-Content-SHA256")
+        respHeaders.Add("Trailers", "X-Content-Length")
         w.WriteStatusLine(response.STATUS_OK)
-        w.WriteHeaders(headers)
+        w.WriteHeaders(respHeaders)
 
         resp, err := http.Get(fmt.Sprintf("https://httpbin.org/%s", httpbinPath))
         if err != nil {
@@ -51,6 +54,7 @@ func handle(w *response.Writer, req *request.Request) {
         }
 
         buf := make([]byte, 1024, 1024)
+        body := []byte{}
         for {
             n, err := resp.Body.Read(buf)
             if err != nil {
@@ -59,9 +63,17 @@ func handle(w *response.Writer, req *request.Request) {
                 }
                 break;
             }
+            fmt.Printf("read %v bytes\n", n)
+            body = append(body, buf[:n]...)
             w.WriteChunkedBody(buf[:n])
         }
-        w.WriteChunkedBodyDone()
+
+        sha := sha256.Sum256(body)
+        trailers := headers.NewHeaders()
+        trailers.Add("X-Content-SHA256", fmt.Sprintf("%x", sha[:]))
+        trailers.Add("X-Content-Length", strconv.Itoa(len(body)))
+
+        w.WriteChunkedBodyDone(trailers)
     } else {
         var body string
         var statusCode response.StatusCode
@@ -97,9 +109,9 @@ func handle(w *response.Writer, req *request.Request) {
             }
         }
 
-        headers.Add("Content-Length", strconv.Itoa(len(body)))
+        respHeaders.Add("Content-Length", strconv.Itoa(len(body)))
         w.WriteStatusLine(statusCode)
-        w.WriteHeaders(headers)
+        w.WriteHeaders(respHeaders)
         w.WriteBody([]byte(body))
     }
 }

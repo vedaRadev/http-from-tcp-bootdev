@@ -14,21 +14,12 @@ const (
     STATUS_INTERNAL_SERVER_ERROR StatusCode = 500
 )
 
-type WriterState int
-const (
-    WRITER_STATE_STATUSLINE WriterState = iota
-    WRITER_STATE_HEADERS
-    WRITER_STATE_BODY
-    WRITER_STATE_DONE
-)
-
 type Writer struct {
     internalWriter io.Writer
-    state WriterState
 }
 
 func NewWriter(internalWriter io.Writer) Writer {
-    return Writer { internalWriter, WRITER_STATE_STATUSLINE }
+    return Writer { internalWriter }
 }
 
 func (w *Writer) Write(data []byte) (int, error) {
@@ -37,8 +28,6 @@ func (w *Writer) Write(data []byte) (int, error) {
 
 func (w *Writer) WriteStatusLine(statusCode StatusCode) (int, error) {
     var statusLine string
-
-    if w.state != WRITER_STATE_STATUSLINE { return 0, errors.New("out of order write") }
 
     switch(statusCode) {
     case STATUS_OK:
@@ -59,13 +48,10 @@ func (w *Writer) WriteStatusLine(statusCode StatusCode) (int, error) {
     totalBytes += n
     if err != nil { return totalBytes, err }
 
-    w.state = WRITER_STATE_HEADERS
     return totalBytes, nil
 }
 
 func (w *Writer) WriteHeaders(headers headers.Headers) (int, error) {
-    if w.state != WRITER_STATE_HEADERS { return 0, errors.New("out of order write") }
-
     var totalBytes int
 
     for key, value := range headers {
@@ -79,17 +65,13 @@ func (w *Writer) WriteHeaders(headers headers.Headers) (int, error) {
     totalBytes += n
     if err != nil { return totalBytes, err }
 
-    w.state = WRITER_STATE_BODY
     return totalBytes, nil
 }
 
 func (w *Writer) WriteBody(body []byte) (int, error) {
-    if w.state != WRITER_STATE_BODY { return 0, errors.New("out of order write") }
-
     n, err := w.Write(body)
     if err != nil { return n, err }
 
-    w.state = WRITER_STATE_DONE
     return n, nil
 }
 
@@ -109,6 +91,20 @@ func (w *Writer) WriteChunkedBody(data []byte) (int, error) {
     return totalBytes, err
 }
 
-func (w *Writer) WriteChunkedBodyDone() (int, error) {
-    return w.Write([]byte("0\r\n\r\n"))
+func (w *Writer) WriteChunkedBodyDone(trailers headers.Headers) (int, error) {
+    var totalBytes int
+    n, err := w.Write([]byte("0\r\n"))
+    totalBytes += n
+    if err != nil { return totalBytes, err }
+
+    if len(trailers) != 0 {
+        n, err = w.WriteHeaders(trailers)
+        totalBytes += n
+        if err != nil { return totalBytes, err }
+        return totalBytes, nil
+    }
+
+    n, err = w.Write([]byte("\r\n"))
+    totalBytes += n
+    return totalBytes, err
 }
