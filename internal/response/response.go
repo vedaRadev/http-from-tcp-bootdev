@@ -92,3 +92,23 @@ func (w *Writer) WriteBody(body []byte) (int, error) {
     w.state = WRITER_STATE_DONE
     return n, nil
 }
+
+func (w *Writer) WriteChunkedBody(data []byte) (int, error) {
+    var totalBytes int
+    dataLen := len(data)
+
+    n, err := w.Write(fmt.Appendf([]byte{}, "%x\r\n", dataLen))
+    totalBytes += n
+    if err != nil { return totalBytes, err }
+
+    send := make([]byte, dataLen)
+    copy(send, data)
+    send = append(send, '\r', '\n')
+    n, err = w.Write(send)
+    totalBytes += n
+    return totalBytes, err
+}
+
+func (w *Writer) WriteChunkedBodyDone() (int, error) {
+    return w.Write([]byte("0\r\n\r\n"))
+}
