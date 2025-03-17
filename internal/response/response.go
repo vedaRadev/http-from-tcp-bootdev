@@ -14,8 +14,31 @@ const (
     STATUS_INTERNAL_SERVER_ERROR StatusCode = 500
 )
 
-func WriteStatusLine(w io.Writer, statusCode StatusCode) error {
+type WriterState int
+const (
+    WRITER_STATE_STATUSLINE WriterState = iota
+    WRITER_STATE_HEADERS
+    WRITER_STATE_BODY
+    WRITER_STATE_DONE
+)
+
+type Writer struct {
+    internalWriter io.Writer
+    state WriterState
+}
+
+func NewWriter(internalWriter io.Writer) Writer {
+    return Writer { internalWriter, WRITER_STATE_STATUSLINE }
+}
+
+func (w *Writer) Write(data []byte) (int, error) {
+    return w.internalWriter.Write(data)
+}
+
+func (w *Writer) WriteStatusLine(statusCode StatusCode) error {
     var statusLine string
+
+    if w.state != WRITER_STATE_STATUSLINE { return errors.New("out of order write") }
 
     switch(statusCode) {
     case STATUS_OK:
@@ -31,10 +54,15 @@ func WriteStatusLine(w io.Writer, statusCode StatusCode) error {
     _, err := w.Write([]byte(statusLine))
     if err != nil { return err }
     _, err = w.Write([]byte("\r\n"))
-    return err
+    if err != nil { return err }
+
+    w.state = WRITER_STATE_HEADERS
+    return nil
 }
 
-func WriteHeaders(w io.Writer, headers headers.Headers) error {
+func (w *Writer) WriteHeaders(headers headers.Headers) error {
+    if w.state != WRITER_STATE_HEADERS { return errors.New("out of order write") }
+
     for key, value := range headers {
         header := fmt.Appendf([]byte{}, "%s: %s\r\n", key, value)
         _, err := w.Write(header)
@@ -42,5 +70,18 @@ func WriteHeaders(w io.Writer, headers headers.Headers) error {
     }
 
     _, err := w.Write([]byte("\r\n"))
-    return err
+    if err != nil { return err }
+
+    w.state = WRITER_STATE_BODY
+    return nil
+}
+
+func (w *Writer) WriteBody(body []byte) error {
+    if w.state != WRITER_STATE_BODY { return errors.New("out of order write") }
+
+    _, err := w.Write(body)
+    if err != nil { return err }
+
+    w.state = WRITER_STATE_DONE
+    return nil
 }

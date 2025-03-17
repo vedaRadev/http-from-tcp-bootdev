@@ -3,21 +3,12 @@ package server
 import (
     "net"
     "fmt"
-    "io"
-    "bytes"
     "sync/atomic"
-    "strconv"
-    "http-from-tcp/internal/headers"
     "http-from-tcp/internal/response"
     "http-from-tcp/internal/request"
 )
 
-type HandlerError struct {
-    Status response.StatusCode
-    Message string
-}
-
-type Handler func(w io.Writer, req *request.Request) *HandlerError
+type Handler func(w *response.Writer, req *request.Request)
 
 type Server struct {
     listener net.Listener
@@ -58,6 +49,11 @@ func (s *Server) handle(conn net.Conn) {
     defer conn.Close()
 
     parsedRequest, err := request.RequestFromReader(conn)
+    // TODO handle error
+    if err != nil { return }
+    responseWriter := response.NewWriter(conn)
+    s.handler(&responseWriter, parsedRequest)
+    /*
     responseBody := bytes.NewBuffer([]byte{})
     var handlerError *HandlerError
     if err != nil {
@@ -83,4 +79,5 @@ func (s *Server) handle(conn net.Conn) {
     _ = response.WriteHeaders(conn, headers)
 
     _, _ = conn.Write(responseBody.Bytes())
+    */
 }

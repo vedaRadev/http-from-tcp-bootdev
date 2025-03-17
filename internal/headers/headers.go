@@ -40,7 +40,7 @@ func (h Headers) Parse(data []byte) (n int, done bool, err error) {
     if fieldName != headerParts[0] { return 0, false, errors.New("field-name cannot contain whitespace before the separator") }
     if !isValidFieldName(fieldName) { return 0, false, errors.New("field-name contains illegal characters") }
     if fieldValue == "" { return 0, false, errors.New("missing field value") }
-    h.Set(fieldName, fieldValue)
+    h.Add(fieldName, fieldValue)
     // include the CRLF we split on in the count
     return len(header) + 2, false, nil
 }
@@ -49,7 +49,7 @@ func (h Headers) Get(fieldName string) string {
     return h[strings.ToLower(fieldName)]
 }
 
-func (h Headers) Set(fieldName, fieldValue string) {
+func (h Headers) Add(fieldName, fieldValue string) {
     loweredFieldName := strings.ToLower(fieldName)
     existingFieldValue, exists := h[loweredFieldName]
     if !exists {
