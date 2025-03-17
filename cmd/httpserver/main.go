@@ -35,11 +35,11 @@ const bodyTemplate string = "" +
 func handle(w *response.Writer, req *request.Request) {
     respHeaders := headers.NewHeaders()
     respHeaders.Add("Connection", "close")
-    respHeaders.Add("Content-Type", "text/html")
 
     requestTarget := req.RequestLine.RequestTarget
     if strings.HasPrefix(requestTarget, "/httpbin") {
         httpbinPath := strings.TrimPrefix(requestTarget, "/httpbin")
+        respHeaders.Add("Content-Type", "text/html")
         respHeaders.Add("Transfer-Encoding", "chunked")
         respHeaders.Add("Trailers", "X-Content-SHA256")
         respHeaders.Add("Trailers", "X-Content-Length")
@@ -78,7 +78,18 @@ func handle(w *response.Writer, req *request.Request) {
         var body string
         var statusCode response.StatusCode
         switch(requestTarget) {
+            case "/video": {
+                respHeaders.Add("Content-Type", "video/mp4")
+                statusCode = response.STATUS_OK
+                data, err := os.ReadFile("./assets/vim.mp4")
+                if err != nil {
+                    fmt.Printf("failed to read file: %s\n", err.Error())
+                }
+                body = string(data)
+            }
+
             case "/yourproblem": {
+                respHeaders.Add("Content-Type", "text/html")
                 statusCode = response.STATUS_BAD_REQUEST
                 body = fmt.Sprintf(
                     bodyTemplate,
@@ -89,6 +100,7 @@ func handle(w *response.Writer, req *request.Request) {
             }
 
             case "/myproblem": {
+                respHeaders.Add("Content-Type", "text/html")
                 statusCode = response.STATUS_INTERNAL_SERVER_ERROR
                 body = fmt.Sprintf(
                     bodyTemplate,
@@ -99,6 +111,7 @@ func handle(w *response.Writer, req *request.Request) {
             }
 
             default: {
+                respHeaders.Add("Content-Type", "text/html")
                 statusCode = response.STATUS_OK
                 body = fmt.Sprintf(
                     bodyTemplate,
